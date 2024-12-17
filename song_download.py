@@ -1,6 +1,6 @@
 import yt_dlp
 
-def download_song(search_query, output_folder):
+def download_song(search_query_str, output_folder_str):
     """
 
     Downloads a Youtube vidfeo as MP3 using yt-dlp
@@ -8,21 +8,21 @@ def download_song(search_query, output_folder):
     """
     ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': f'{output_folder}/%{title}s.%{ext}s',
+            'outtmpl': f'{output_folder_str}/%(title)s.%(ext)s',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
-             }]
+             }],
             'quiet': False,
             'default_search': 'ytsearch',
             'noplaylist': True
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([search_query])
-        info_dict = ydl.extract_info(search_query, download=False)
+        ydl.download([search_query_str])
+        info_dict = ydl.extract_info(search_query_str, download=False)
         title = info_dict['entries'][0]['title']
-        return f"{output_folder}/{title}.mp3"
+        return f"{output_folder_str}/{title}.mp3"
 
-
+download_song("Never gonna give you up", "./music")
