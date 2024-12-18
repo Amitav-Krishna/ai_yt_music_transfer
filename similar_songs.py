@@ -31,4 +31,4 @@ def get_similar_songs(song_name, artist=None, limit=4):
         print("Failed to fetch similar songs.")
         return []
 
-print(get_similar_songs("All I want for Christmas is you", "Mariah Carey"))
+
