@@ -11,7 +11,7 @@ def get_similar_songs(song_name, artist=None, limit=4):
     params = {
             "method": "track.getsimilar",
             "track": song_name,
-            "api_key": LAST_FM_KEY
+            "api_key": LAST_FM_KEY,
             "format": "json",
             "limit": limit
     }
@@ -22,7 +22,7 @@ def get_similar_songs(song_name, artist=None, limit=4):
     if response.status_code == 200:
         data = response.json()
         if "similartracks" in data and "track" in data["similartracks"]:
-            simlar_tracks = data["similartracks"]["track"]
+            similar_tracks = data["similartracks"]["track"]
             return [f"{track['name']} by {track['artist']['name']}" for track in similar_tracks]
         else:
             print("No similar songs found.")
@@ -30,3 +30,5 @@ def get_similar_songs(song_name, artist=None, limit=4):
     else:
         print("Failed to fetch similar songs.")
         return []
+
+print(get_similar_songs("All I want for Christmas is you", "Mariah Carey"))
