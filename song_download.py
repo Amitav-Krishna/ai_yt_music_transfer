@@ -25,4 +25,7 @@ def download_song(search_query_str, output_folder_str):
         title = info_dict['entries'][0]['title']
         return f"{output_folder_str}/{title}.mp3"
 
-download_song("Never gonna give you up", "./music")
+song = input("Enter your song here: ")
+path = input("Enter a path here: ")
+
+download_song(song, path)
