@@ -5,57 +5,48 @@ import shlex
 import yt_dlp
 import os
 import glob
-import difflib
 from threading import Thread
 from queue import Queue, Empty
 import pyperclip  # For copying text to clipboard
 import re
 from datetime import datetime
+from dotenv import load_dotenv
+import openai
+load_dotenv()
 
-# YouTube API Key (Replace with your own)
-YOUTUBE_API_KEY = "AIzaSyDlXPyM-PdVDc8JtS9nyIc9mn8nXQQdZJg"
+# OpenAI API Key (Replace with your own)
+OPENAI_API_TOKEN = os.getenv("OPENAI_API_TOKEN")
+YOUTUBE_API_TOKEN = os.getenv("YOUTUBE_API_TOKEN")
+client = openai.OpenAI(api_key=OPENAI_API_TOKEN)
 
 def sanitize_filename(filename):
-    """Sanitize the filename by removing invalid characters and truncating it."""
-    # Replace invalid characters with underscores
-    sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
-    # Remove leading/trailing spaces and dots
-    sanitized = sanitized.strip('. ')
-    
-    # Truncate the filename to first 10 and last 10 characters
-    if len(sanitized) > 20:  # Only truncate if the filename is longer than 20 characters
-        first_part = sanitized[:10]
-        last_part = sanitized[-10:]
-        sanitized = f"{first_part}...{last_part}"
-    
-    return sanitized
+    """
+    Sanitize the filename by removing trailing numbers, special characters, and underscores.
+    """
+    filename = re.sub(r'[^a-zA-Z0-9]', '', filename)
+    filename = re.sub(r'\d$', '', filename)
+    return filename
 def get_similar_songs(search_query, num_suggestions=2):
-    """Search for and return similar songs based on the search query."""
-    ydl_opts = {
-        'quiet': True,
-        'default_search': 'ytsearch10',  # Get more results
-        'noplaylist': True,
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        search_results = ydl.extract_info(search_query, download=False)['entries']
-    
-    if not search_results:
-        return ["No similar songs found", "No similar songs found"]
-    
-    original_title = search_results[0]['title'].lower()
-    
-    # Filter out remixes, live versions, and similar titles
-    similar_songs = []
-    for entry in search_results[1:]:
-        title = entry['title'].lower()
-        if difflib.SequenceMatcher(None, original_title, title).ratio() < 0.7:
-            similar_songs.append(title)
-        if len(similar_songs) == num_suggestions:
-            break
-    
-    return similar_songs if similar_songs else ["No similar songs found", "No similar songs found"]
+    """Use OpenAI's GPT model to suggest similar songs based on the search query."""
+    try:
+        response = client.completions.create(
+            model="gpt-3.5-turbo-instruct",  # Use a supported model
+            prompt=f"Suggest {num_suggestions} songs similar to '{search_query}'. Do **NOT** append [NUM]. to the beginning.:",
+            max_tokens=50,
+            n=1,
+            stop=None,
+            temperature=0.7,
+        )
+        suggestions = response.choices[0].text.strip().split('\n')
+        suggestions = [s.strip() for s in suggestions if s.strip()]
 
+        # Remove any pattern that looks like a number followed by a period (e.g., "1.", "2.")
+        suggestions = [re.sub(r'^\d+\.', '', s).strip() for s in suggestions]
+
+        return suggestions if suggestions else ["No similar songs found", "No similar songs found"]
+    except Exception as e:
+        print(f"Error getting similar songs: {e}")
+        return ["No similar songs found", "No similar songs found"]
 def download_song(search_query, output_folder):
     """Downloads a YouTube video as MP3 using yt-dlp and renames it based on the search query."""
     ydl_opts = {
@@ -72,18 +63,17 @@ def download_song(search_query, output_folder):
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.extract_info(search_query, download=True)
+        info = ydl.extract_info(search_query, download=True)
+        original_title = info.get('title', search_query)  # Fallback to search_query if title is missing
         downloaded_files = glob.glob(f"{output_folder}/*.mp3")
         if not downloaded_files:
             raise FileNotFoundError("MP3 file not found after download.")
-        
+
         # Get the most recently downloaded file
         original_file = max(downloaded_files, key=os.path.getctime)
 
-        # Sanitize the search query and add a timestamp to ensure uniqueness
-        sanitized_query = sanitize_filename(search_query)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        new_file_name = f"{sanitized_query}_{timestamp}.mp3"
+        sanitized_title = sanitize_filename(original_title)
+        new_file_name = f"{sanitized_title}.mp3"
         new_file_path = os.path.join(output_folder, new_file_name)
 
         # Rename the file
@@ -107,7 +97,10 @@ def transfer_to_android(local_file_path, android_folder):
         android_folder = shlex.quote(android_folder)
         adb_push_command = f"adb push {shlex.quote(local_file_path)} {android_folder}"
         subprocess.run(adb_push_command, shell=True, check=True)
+        
+        # Rescan the file on the Android device
         android_file_path = f"{android_folder}/{local_file_name}"
+        print(f"File pushed to: {android_file_path}")  # Add this line to print the path
         adb_rescan_command = f"adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://{android_file_path}"
         subprocess.run(adb_rescan_command, shell=True, check=True)
     except subprocess.CalledProcessError as e:
@@ -148,16 +141,16 @@ class SongDownloaderApp:
         self.root = tk.Tk()
         self.root.title("AI Song Downloader")
         self.root.geometry("600x600")
-        
+
         # Initialize message queue
         self.message_queue = Queue()
-        
+
         # Track previously searched songs
         self.previously_searched_songs = set()
-        
+
         self.create_widgets()
         self.start_update_cycle()
-    
+
     def create_widgets(self):
         """Create and arrange all GUI widgets."""
         # Song Name Entry
@@ -189,9 +182,9 @@ class SongDownloaderApp:
         # Download Button and Status Label
         self.download_button = tk.Button(self.root, text="Download & Transfer", command=self.download_and_transfer)
         self.download_button.pack(pady=20)
-        
+
         tk.Button(self.root, text="Exit", command=self.root.quit).pack(pady=5)
-        
+
         self.status_label = tk.Label(self.root, text="", fg="green")
         self.status_label.pack(pady=10)
 
@@ -224,7 +217,7 @@ class SongDownloaderApp:
 
         # Disable the download button while processing
         self.download_button.config(state="disabled")
-        
+
         # Start the download thread
         download_thread = DownloadThread(self.message_queue, search_query, output_folder, android_folder)
         download_thread.daemon = True
@@ -236,7 +229,7 @@ class SongDownloaderApp:
             while True:  # Process all pending messages
                 try:
                     msg_type, msg_content = self.message_queue.get_nowait()
-                    
+
                     if msg_type == "status":
                         self.status_label.config(text=msg_content)
                     elif msg_type == "similar":
@@ -258,7 +251,7 @@ class SongDownloaderApp:
                         messagebox.showerror("Error", f"An error occurred: {msg_content}")
                     elif msg_type == "enable_button":
                         self.download_button.config(state="normal")
-                    
+
                     self.message_queue.task_done()
                 except Empty:
                     break  # Exit the loop if the queue is empty
