@@ -9,7 +9,6 @@ from threading import Thread
 from queue import Queue, Empty
 import pyperclip  # For copying text to clipboard
 import re
-from datetime import datetime
 from dotenv import load_dotenv
 import openai
 load_dotenv()
